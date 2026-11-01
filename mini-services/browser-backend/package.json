@@ -1,0 +1,9 @@
+{
+  "name": "browser-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Browser-with-console backend: URL-rewriting web proxy + shell exec websocket",
+  "scripts": {
+    "dev": "bun --hot index.ts"
+  }
+}

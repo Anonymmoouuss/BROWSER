@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: scramjet-backend
+    runtime: docker
+    plan: standard
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    numInstances: 1
+    envVars:
+      - key: DATABASE_URL
+        value: file:/app/db/custom.db
+      - key: FORWARDED_PROTO
+        value: https
+    disk:
+      name: scramjet-data
+      mountPath: /app/db
+      sizeGB: 1

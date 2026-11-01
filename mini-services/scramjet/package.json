@@ -1,0 +1,12 @@
+{
+  "name": "scramjet",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node supervisor.mjs"
+  },
+  "dependencies": {
+    "@mercuryworkshop/proxy-bootstrap": "^0.0.5"
+  }
+}

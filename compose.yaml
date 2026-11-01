@@ -1,0 +1,12 @@
+services:
+  backend:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${GATEWAY_PORT:-8080}:8080"
+    environment:
+      DATABASE_URL: file:/app/db/custom.db
+      FORWARDED_PROTO: ${FORWARDED_PROTO:-http}
+    volumes:
+      - ./db:/app/db
+    stop_grace_period: 30s

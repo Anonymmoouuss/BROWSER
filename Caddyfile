@@ -1,0 +1,22 @@
+{$CADDY_ADDRESS::8080} {
+	@browser_backend query XTransformPort=3030
+	handle @browser_backend {
+		reverse_proxy 127.0.0.1:3030
+	}
+
+	@scramjet query XTransformPort=3031
+	handle @scramjet {
+		reverse_proxy 127.0.0.1:3031
+	}
+
+	@unknown_service query XTransformPort=*
+	handle @unknown_service {
+		respond "Unknown service" 400
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:3000 {
+			header_up X-Forwarded-Proto {$FORWARDED_PROTO:http}
+		}
+	}
+}

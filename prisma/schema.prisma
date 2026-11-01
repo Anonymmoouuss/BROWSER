@@ -1,0 +1,114 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// SCRM-style access control: password + face login, admin approval, $5/month
+// ---------------------------------------------------------------------------
+
+/// Singleton row (id = 1): the workspace's two scrypt password hashes, the
+/// one-time admin setup-secret hash, the AES-256-GCM face-template key and
+/// the HMAC secret shared with the proxy mini-services (3030/3031/3032).
+model AccessConfig {
+  id           Int      @id @default(1)
+  userHash     String // scrypt hash of the normal (user) workspace password
+  adminHash    String // scrypt hash of the admin workspace password
+  setupHash    String? // sha256 hex of the one-time admin setup secret
+  templateKey  String // hex 32-byte AES-256-GCM key sealing face templates
+  sessionSecret String // >= 32 chars HMAC secret for signed sj_access cookies
+  initializedAt DateTime @default(now())
+}
+
+/// Enrolled people. role "user" requires admin approval + monthly payment;
+/// role "admin" (single row) unlocks the admin panel only.
+model AccessUser {
+  id           String   @id @default(uuid())
+  name         String
+  role         String // "user" | "admin"
+  status       String // "pending" | "approved" | "rejected" | "revoked"
+  template     String? // sealed 128-dim face descriptor (iv.tag.data base64url)
+  reviewPhoto  String? // sealed data-URL photo, pending enrollments only
+  authVersion  Int      @default(0) // bumped when admin face is replaced
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  payments AccessPayment[]
+  tokens   AccessToken[]
+
+  @@index([role, status])
+}
+
+/// Opaque tokens: preauth (password step, 5 min), session (30 min admin /
+/// 12 h user), challenge (one-use scan nonce, 90 s), receipt (enrollment
+/// status check, 7 d), recovery (admin face replacement, 10 y).
+model AccessToken {
+  hash          String   @id // sha256 hex of the raw token
+  kind          String
+  role          String?
+  userId        String?
+  user          AccessUser? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose       String? // challenge purpose (login|enroll|setup|recover)
+  preauthHash   String? // challenge -> owning preauth hash
+  recoverVersion Int? // admin auth_version at recovery-challenge mint
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+
+  @@index([expiresAt])
+  @@index([userId, kind])
+}
+
+/// Manually confirmed $5 calendar-month payments, anchored to the member's
+/// registration instant (UTC, clamped at month end). Idempotent per period.
+model AccessPayment {
+  id           Int      @id @default(autoincrement())
+  userId       String
+  user         AccessUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  period       Int
+  periodStart  DateTime
+  periodEnd    DateTime
+  amountCents  Int      @default(500)
+  confirmedBy  String?
+  confirmedAt  DateTime @default(now())
+
+  @@unique([userId, period])
+}
+
+/// Fixed-window rate limiting (password attempts, scans, admin actions).
+model AccessRate {
+  key      String   @id
+  count    Int
+  expiresAt DateTime
+}
+
+/// Audit trail of admin/significant actions.
+model AccessAudit {
+  id        Int      @id @default(autoincrement())
+  actor     String?
+  action    String
+  target    String?
+  createdAt DateTime @default(now())
+}
+
+// ClipForge — render history (legacy, settings metadata only).
+model EditProject {
+  id        String   @id @default(cuid())
+  title     String
+  style     String
+  aspect    String
+  quality   String
+  duration  Float
+  bpm       Float?
+  musicName String?
+  clipCount Int
+  captions  Boolean  @default(true)
+  intensity Float    @default(0.7)
+  seed      Int      @default(1)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
