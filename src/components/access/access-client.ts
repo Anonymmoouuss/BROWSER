@@ -62,6 +62,11 @@ export function accessAuthHeaders(): Record<string, string> {
 
 /** Apply the tokens minted by a successful response. */
 function applyTokens(action: string, body: Record<string, unknown>): void {
+  if (body.passkeyRequired === true || body.deviceApprovalRequired === true) {
+    storeRemove(PREAUTH_KEY);
+    storeRemove(SESSION_KEY);
+    clearEngineGrant();
+  }
   if (action === "logout" || action === "reset") {
     storeRemove(PREAUTH_KEY);
     storeRemove(SESSION_KEY);
@@ -163,6 +168,7 @@ export async function accessSession(): Promise<AccessSessionInfo> {
     cache: "no-store",
     credentials: "same-origin",
     headers: authHeaders(),
+    signal: AbortSignal.timeout(15_000),
   }).catch(() => null);
   const body = (await response?.json().catch(() => null)) as
     | Partial<AccessSessionInfo>

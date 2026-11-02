@@ -22,6 +22,7 @@ import BookmarksPage from "./bookmarks-page";
 import DownloadsPage from "./downloads-page";
 import DownloadsShelf from "./downloads-shelf";
 import ConfigPage from "./config-page";
+import ExtensionsPage from "./extensions-page";
 import SearchResultsPage from "./search-results-page";
 import PageContextMenu from "./page-context-menu";
 import FindBar from "./find-bar";
@@ -688,8 +689,13 @@ export default function BrowserApp({ onLock }: { onLock?: () => void }) {
       return;
     }
     setTabs((ts) => ts.map((x) => (x.id === t.id ? { ...x, loading: true } : x)));
+    const frame = iframesRef.current.get(t.id);
+    if (!frame?.contentWindow) {
+      setTabs((ts) => ts.map((x) => (x.id === t.id ? { ...x, navSeq: x.navSeq + 1 } : x)));
+      return;
+    }
     try {
-      iframesRef.current.get(t.id)?.contentWindow?.location.reload();
+      frame.contentWindow.location.reload();
     } catch {
       setTabs((ts) => ts.map((x) => (x.id === t.id ? { ...x, navSeq: x.navSeq + 1 } : x)));
     }
@@ -1016,6 +1022,7 @@ export default function BrowserApp({ onLock }: { onLock?: () => void }) {
         onOpenHistory={() => openUrlTab("about:history")}
         onOpenBookmarks={() => openUrlTab("about:bookmarks")}
         onOpenSettings={() => openUrlTab("about:config")}
+        onOpenExtensions={() => openUrlTab("about:extensions")}
         onZoomIn={() => zoomActive("in")}
         onZoomOut={() => zoomActive("out")}
         onZoomReset={() => zoomActive("reset")}
@@ -1024,7 +1031,7 @@ export default function BrowserApp({ onLock }: { onLock?: () => void }) {
         onPrint={printActive}
       />
 
-      {bookmarks.length > 0 && <nav aria-label="Bookmarks bar" className="cw-scroll flex h-9 shrink-0 items-center gap-1 overflow-x-auto border-b border-zinc-800/80 bg-zinc-900/40 px-2">
+      {bookmarks.length > 0 && <nav aria-label="Bookmarks bar" className="cw-scroll flex h-9 shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--browser-border)] bg-[var(--browser-toolbar)] px-3">
         <button type="button" onClick={() => openUrlTab("about:bookmarks")} aria-label="Manage bookmarks" title="Manage bookmarks" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-800 hover:text-zinc-100"><FolderOpen className="h-3.5 w-3.5" aria-hidden="true" /></button>
         <span className="mx-1 h-4 w-px shrink-0 bg-zinc-800" aria-hidden="true" />
         {bookmarks.map((bookmark) => {
@@ -1040,7 +1047,7 @@ export default function BrowserApp({ onLock }: { onLock?: () => void }) {
       {/* loading progress bar */}
       <div className="relative h-0.5 shrink-0 bg-zinc-900/70" aria-hidden="true">
         {activeTab.loading && (
-          <div className="cw-progress absolute inset-y-0 left-0 w-2/5 rounded-full bg-gradient-to-r from-transparent via-emerald-400 to-emerald-300" />
+          <div className="cw-progress absolute inset-y-0 left-0 w-2/5 bg-[var(--browser-accent)]" />
         )}
       </div>
 
@@ -1094,6 +1101,8 @@ export default function BrowserApp({ onLock }: { onLock?: () => void }) {
                       resumableIds={downloads.resumable}
                     />
                   </div>
+                ) : tab.navUrl === "about:extensions" ? (
+                  <ExtensionsPage />
                 ) : tab.navUrl === "about:config" ? (
                   <div className="h-full" style={tab.zoom !== 1 ? { zoom: tab.zoom } : undefined}>
                     <ConfigPage

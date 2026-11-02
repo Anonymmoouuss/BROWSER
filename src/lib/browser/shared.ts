@@ -92,7 +92,7 @@ export function isUrlLike(q: string): boolean {
 
 /** Internal app pages that render inside a tab instead of the proxy frame.
  *  view-source:<url> pages are internal too (they render our source viewer). */
-export const INTERNAL_PAGES = ["about:history", "about:bookmarks", "about:downloads", "about:config"] as const;
+export const INTERNAL_PAGES = ["about:history", "about:bookmarks", "about:downloads", "about:config", "about:extensions"] as const;
 
 export const VIEW_SOURCE_PREFIX = "view-source:";
 
@@ -133,6 +133,7 @@ export function normalizeInput(input: string): string | null {
   if (/^about:bookmarks$/i.test(q)) return "about:bookmarks";
   if (/^about:downloads$/i.test(q)) return "about:downloads";
   if (/^about:(config|settings)$/i.test(q)) return "about:config";
+  if (/^about:(extensions|addons)$/i.test(q)) return "about:extensions";
   // view-source:example.com/page -> view-source:https://example.com/page
   if (/^view-source:/i.test(q)) {
     const inner = q.slice("view-source:".length).trim();

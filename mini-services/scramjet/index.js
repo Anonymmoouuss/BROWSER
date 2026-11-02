@@ -151,6 +151,7 @@ function verifyAccessValue(value) {
     return (
       payload?.v === 1 &&
       payload?.role === "user" &&
+      payload?.amr === "webauthn" &&
       Number.isFinite(payload?.exp) &&
       payload.exp > Date.now()
     );
@@ -193,11 +194,11 @@ async function deepVerify(req) {
       headers: { cookie },
       signal: AbortSignal.timeout(3000),
     });
-    if (!res.ok) return true;
+    if (!res.ok) return false;
     const body = await res.json();
     return body?.unlocked === true;
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -367,6 +368,11 @@ const server = http.createServer(async (req, res) => {
     res.end("workspace locked");
     return;
   }
+  if (!(await deepVerify(req))) {
+    res.writeHead(401, { "Content-Type": "text/plain", "Cache-Control": "no-store" });
+    res.end("workspace approval required");
+    return;
+  }
 
   // Generated service worker (token-aware template; the token rides on the
   // worker's own script URL, not the body).
@@ -420,7 +426,18 @@ server.on("upgrade", async (req, socket, head) => {
     socket.destroy();
     return;
   }
-  if (routeUpgrade(req, socket, head)) return;
+  if (routeUpgrade(req, socket, head)) {
+    let checking = false;
+    const timer = setInterval(async () => {
+      if (checking) return;
+      checking = true;
+      try { if (!(await deepVerify(req))) socket.destroy(); }
+      finally { checking = false; }
+    }, 15_000);
+    timer.unref();
+    socket.once("close", () => clearInterval(timer));
+    return;
+  }
   socket.destroy();
 });
 

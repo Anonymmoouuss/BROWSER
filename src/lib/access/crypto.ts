@@ -76,6 +76,7 @@ export interface AccessCookiePayload {
   /** raw opaque token (preauth or session) */
   tid: string;
   role: "user" | "admin";
+  amr?: "webauthn";
   name?: string;
   exp: number;
 }

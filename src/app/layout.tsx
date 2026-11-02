@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Browser — web browser with a real console",
+  title: "Browser | Private Workspace",
   description:
     "A Chrome-style web browser in a web page: tabs, address bar, real websites streamed through a server-side proxy, plus a built-in console that executes real shell commands and evaluates JavaScript in the page.",
   keywords: [
@@ -26,11 +26,8 @@ export const metadata: Metadata = {
     "devtools",
   ],
   authors: [{ name: "Browser" }],
-  icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
-  },
   openGraph: {
-    title: "Browser — web browser with a real console",
+    title: "Browser | Private Workspace",
     description: "Browse real websites and run real commands, all inside one page.",
     siteName: "Browser",
     type: "website",

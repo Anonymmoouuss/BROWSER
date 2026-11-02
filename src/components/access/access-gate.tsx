@@ -31,6 +31,8 @@ import {
 import BrowserApp from "@/components/browser/browser-app";
 import FaceCapture from "./face-capture";
 import AdminPanel from "./admin-panel";
+import PasskeyStep from "./passkey-step";
+import DeviceApprovalStep from "./device-approval-step";
 import {
   accessRequest,
   accessSession,
@@ -49,6 +51,8 @@ type Phase =
   | "setup-form"
   | "recover-form"
   | "capture"
+  | "passkey"
+  | "device-pending"
   | "pending"
   | "admin"
   | "app";
@@ -56,19 +60,26 @@ type Phase =
 type ScanPurpose = "login" | "enroll" | "setup" | "recover";
 
 const RECEIPT_KEY = "scramjet-enrollment-receipt";
+const DEVICE_RECEIPT_KEY = "scramjet-device-approval-receipt";
 
 const inputClass =
-  "w-full rounded-xl border border-zinc-700 bg-zinc-950/70 px-4 py-2.5 text-sm text-zinc-100 outline-none transition-colors placeholder:text-zinc-600 focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/20";
+  "w-full rounded-lg border border-zinc-700 bg-zinc-950/70 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors placeholder:text-zinc-600 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-400/15";
 const primaryButton =
-  "inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-emerald-950 transition-colors hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed";
+  "inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-400 px-4 py-3 text-sm font-semibold text-emerald-950 transition-colors hover:bg-emerald-300 disabled:opacity-40 disabled:cursor-not-allowed";
 const secondaryButton =
-  "inline-flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100 disabled:opacity-40";
+  "inline-flex w-full items-center justify-center gap-2 rounded-lg border border-zinc-700 px-4 py-3 text-sm font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100 disabled:opacity-40";
 
 function Card({ children }: { children: React.ReactNode }) {
   return (
     <main className="cw-backdrop flex min-h-screen w-full items-center justify-center px-4 py-10">
-      <section className="w-full max-w-md rounded-3xl border border-zinc-800 bg-zinc-900/60 p-8 shadow-2xl shadow-black/40 backdrop-blur">
-        {children}
+      <section className="w-full max-w-md overflow-hidden rounded-lg border border-[var(--browser-border)] bg-[var(--card)] shadow-[0_24px_80px_-24px_rgba(0,0,0,0.7)]">
+        <header className="flex items-center justify-between border-b border-[var(--browser-border)] bg-[var(--browser-toolbar)] px-5 py-3">
+          <span className="flex items-center gap-2.5 text-sm font-semibold text-zinc-100">
+            <img src="/logo.svg" alt="" width={24} height={24} className="h-6 w-6" /> Browser
+          </span>
+          <Lock className="h-3.5 w-3.5 text-zinc-500" aria-hidden="true" />
+        </header>
+        <div className="p-5 sm:p-7">{children}</div>
       </section>
     </main>
   );
@@ -98,6 +109,9 @@ export default function AccessGate() {
   const [resetOpen, setResetOpen] = useState(false);
   const [resetPassword, setResetPassword] = useState("");
   const [scanPurpose, setScanPurpose] = useState<ScanPurpose>("login");
+  const [passkeyStage, setPasskeyStage] = useState("");
+  const [deviceReceipt, setDeviceReceipt] = useState("");
+  const sessionRequestPending = useRef(false);
   // pending scan descriptor set when the camera finishes capturing
   const scanRef = useRef<{
     purpose: ScanPurpose;
@@ -106,8 +120,11 @@ export default function AccessGate() {
   } | null>(null);
 
   const loadSession = useCallback(async () => {
+    if (sessionRequestPending.current) return;
+    sessionRequestPending.current = true;
     try {
       const session = await accessSession();
+      setMessage("");
       if (!session.initialized) setPhase("init");
       else if (session.unlocked) setPhase("app");
       else if (session.role === "admin") setPhase("admin");
@@ -115,12 +132,19 @@ export default function AccessGate() {
       setAdminEnrolled(session.adminEnrolled);
       try {
         setReceipt(sessionStorage.getItem(RECEIPT_KEY));
+        const approval = sessionStorage.getItem(DEVICE_RECEIPT_KEY);
+        if (!session.unlocked && session.role !== "admin" && approval && /^[a-f0-9]{64}$/.test(approval)) {
+          setDeviceReceipt(approval);
+          setPhase("device-pending");
+        }
       } catch {
         setReceipt(null);
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The sign-in service is unavailable.");
       setPhase("unavailable");
+    } finally {
+      sessionRequestPending.current = false;
     }
   }, []);
 
@@ -131,6 +155,23 @@ export default function AccessGate() {
     });
     return () => { active = false; };
   }, [loadSession]);
+
+  useEffect(() => {
+    if (phase !== "unavailable") return;
+    const retry = () => {
+      if (document.visibilityState !== "hidden") void loadSession();
+    };
+    const timer = setInterval(retry, 10_000);
+    window.addEventListener("online", retry);
+    window.addEventListener("focus", retry);
+    document.addEventListener("visibilitychange", retry);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("online", retry);
+      window.removeEventListener("focus", retry);
+      document.removeEventListener("visibilitychange", retry);
+    };
+  }, [phase, loadSession]);
 
   /* 30 s access recheck while unlocked (revocation / payment lapse). */
   useEffect(() => {
@@ -290,8 +331,18 @@ export default function AccessGate() {
         role?: string;
         unlocked?: boolean;
         recoveryCodes?: string[];
+        passkeyRequired?: boolean;
+        passkeyStageToken?: string;
       };
       scanRef.current = null;
+      if (result.recoveryCodes?.length) setRecoveryCodes(result.recoveryCodes);
+      if (result.passkeyRequired && result.passkeyStageToken) {
+        setPasskeyStage(result.passkeyStageToken);
+        setVerifying(false);
+        setMessage("");
+        setPhase("passkey");
+        return;
+      }
       if (scan.purpose === "enroll" && result.status === "pending" && result.receipt) {
         sessionStorage.setItem(RECEIPT_KEY, result.receipt);
         setReceipt(result.receipt);
@@ -320,6 +371,41 @@ export default function AccessGate() {
   };
 
   /* ------------------------------ rendering ----------------------------- */
+
+  if (phase === "device-pending") {
+    return <Card><Brand /><DeviceApprovalStep receipt={deviceReceipt} onBack={() => {
+      try { sessionStorage.removeItem(DEVICE_RECEIPT_KEY); } catch {}
+      setDeviceReceipt("");
+      setPhase("password");
+    }} /></Card>;
+  }
+
+  if (phase === "passkey") {
+    return (
+      <Card>
+        <Brand />
+        <PasskeyStep stage={passkeyStage} onComplete={(result) => {
+          setPasskeyStage("");
+          setMessage("");
+          if (result.deviceApprovalRequired === true && typeof result.receipt === "string") {
+            try { sessionStorage.setItem(DEVICE_RECEIPT_KEY, result.receipt); } catch {}
+            setDeviceReceipt(result.receipt);
+            setPhase("device-pending");
+          } else if (result.status === "pending" && typeof result.receipt === "string") {
+            try { sessionStorage.setItem(RECEIPT_KEY, result.receipt); } catch {}
+            setReceipt(result.receipt);
+            setPhase("pending");
+          } else if (result.role === "admin") setPhase("admin");
+          else if (result.unlocked === true) setPhase("app");
+          else { setPhase("password"); setMessage("Sign-in was not completed. Please retry."); }
+        }} onBack={() => {
+          void accessRequest("logout", { passkeyStageToken: passkeyStage }).catch(() => undefined);
+          setPasskeyStage("");
+          setPhase("password");
+        }} />
+      </Card>
+    );
+  }
 
   if (phase === "loading") {
     return (

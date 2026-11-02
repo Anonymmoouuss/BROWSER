@@ -41,7 +41,7 @@ export default function StatusBar({ url, consoleOpen, connected, running, engine
         : { label: "Connecting", dot: "bg-amber-400 cw-pulse", title: "Connecting to the browser engine" };
 
   return (
-    <footer className="flex h-8 min-w-0 shrink-0 items-center justify-between gap-2 border-t border-zinc-800 bg-zinc-900/80 px-3 text-[11px] text-zinc-500">
+    <footer className="flex h-8 min-w-0 shrink-0 items-center justify-between gap-2 border-t border-[var(--browser-border)] bg-[var(--browser-chrome)] px-3 text-[11px] text-zinc-500">
       <span className="flex min-w-0 items-center gap-3">
         <span className="flex shrink-0 items-center gap-1.5" role="status" title={engineBadge.title}>
           <span className={`h-1.5 w-1.5 rounded-full ${engineBadge.dot}`} aria-hidden="true" />

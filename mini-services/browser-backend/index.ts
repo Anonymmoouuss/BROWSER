@@ -104,6 +104,7 @@ function verifyAccessValue(value: string | null | undefined): boolean {
     return (
       payload?.v === 1 &&
       payload?.role === "user" &&
+      payload?.amr === "webauthn" &&
       Number.isFinite(payload?.exp) &&
       payload.exp > Date.now()
     );
@@ -151,11 +152,11 @@ async function deepVerify(req: Request): Promise<boolean> {
       headers: { cookie },
       signal: AbortSignal.timeout(3000),
     });
-    if (!res.ok) return true;
+    if (!res.ok) return false;
     const body = (await res.json()) as { unlocked?: boolean };
     return body?.unlocked === true;
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -728,6 +729,7 @@ interface ShellState {
 }
 
 const shells = new Map<unknown, ShellState>();
+const authorizationTimers = new Map<unknown, ReturnType<typeof setInterval>>();
 
 function safeSend(ws: { send: (data: string) => void }, msg: unknown): void {
   try {
@@ -998,7 +1000,7 @@ const server = Bun.serve({
     if (req.headers.get("upgrade") === "websocket") {
       if (!accessGranted(req)) return locked();
       if (!(await deepVerify(req))) return locked();
-      if (srv.upgrade(req, { data: {} })) return;
+      if (srv.upgrade(req, { data: { authorizationRequest: req } })) return;
       return new Response("upgrade failed", { status: 400 });
     }
     if (req.method === "OPTIONS") {
@@ -1014,10 +1016,12 @@ const server = Bun.serve({
     if (path === "/health") return json({ ok: true, service: "browser-backend", version: "1.3.0" });
     if (path === "/api/proxy") {
       if (!accessGranted(req)) return locked();
+      if (!(await deepVerify(req))) return locked();
       return handleProxy(req, url);
     }
     if (path === "/api/search") {
       if (!accessGranted(req)) return locked();
+      if (!(await deepVerify(req))) return locked();
       return handleSearch(url);
     }
     if (path === "/") return new Response(INFO_HTML, { headers: { "content-type": "text/html; charset=utf-8" } });
@@ -1026,6 +1030,12 @@ const server = Bun.serve({
   websocket: {
     open(ws) {
       shells.set(ws, { cwd: os.homedir(), child: null, filter: new CwdFilter(), timer: null });
+      const request = (ws.data as { authorizationRequest: Request }).authorizationRequest;
+      const timer = setInterval(() => {
+        void deepVerify(request).then((allowed) => { if (!allowed) ws.close(4003, "Workspace approval required"); });
+      }, 15_000);
+      timer.unref();
+      authorizationTimers.set(ws, timer);
       safeSend(ws, { type: "hello", cwd: os.homedir() });
     },
     message(ws, message) {
@@ -1050,6 +1060,9 @@ const server = Bun.serve({
       }
     },
     close(ws) {
+      const authorization = authorizationTimers.get(ws);
+      if (authorization) clearInterval(authorization);
+      authorizationTimers.delete(ws);
       const sh = shells.get(ws);
       if (sh) {
         if (sh.timer) clearTimeout(sh.timer);

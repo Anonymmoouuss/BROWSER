@@ -20,6 +20,7 @@ import {
   MoreVertical,
   Plus,
   Printer,
+  Puzzle,
   RotateCw,
   Search,
   Settings,
@@ -60,6 +61,7 @@ interface ToolbarProps {
   onOpenHistory: () => void;
   onOpenBookmarks: () => void;
   onOpenSettings: () => void;
+  onOpenExtensions: () => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onZoomReset: () => void;
@@ -80,7 +82,7 @@ interface Suggestion {
 
 function iconButtonClass(disabled: boolean): string {
   return `flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${
-    disabled ? "text-zinc-700" : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+    disabled ? "text-zinc-600" : "text-zinc-400 hover:bg-white/8 hover:text-zinc-100"
   }`;
 }
 
@@ -114,7 +116,7 @@ export default function Toolbar(props: ToolbarProps) {
   const {
     canBack, canFwd, loading, url, onBack, onFwd, onReload, onHome,
     onNavigate, onToggleConsole, consoleOpen, onToggleFind, findOpen, bookmarked, onToggleBookmark, history, bookmarks,
-    onOpenDownloads, downloadsActive, onNewTab, canReopenTab, onReopenTab, onOpenHistory, onOpenBookmarks, onOpenSettings,
+    onOpenDownloads, downloadsActive, onNewTab, canReopenTab, onReopenTab, onOpenHistory, onOpenBookmarks, onOpenSettings, onOpenExtensions,
     onZoomIn, onZoomOut, onZoomReset, zoom, onToggleReader, onPrint,
   } = props;
   const [draft, setDraft] = useState<string | null>(null); // non-null while editing
@@ -198,14 +200,14 @@ export default function Toolbar(props: ToolbarProps) {
   const secure = url ? url.startsWith("https://") || url.startsWith("http://localhost") : false;
 
   return (
-    <header className="z-20 flex h-11 shrink-0 items-center gap-1 border-b border-zinc-800 bg-zinc-900/80 px-2 backdrop-blur">
+    <header className="z-20 flex h-13 shrink-0 items-center gap-0.5 border-b border-[var(--browser-border)] bg-[var(--browser-toolbar)] px-2 sm:gap-1 sm:px-3">
       <button type="button" onClick={onBack} disabled={!canBack} aria-label="Go back" title="Back (Alt+Left)" className={iconButtonClass(!canBack)}>
         <ArrowLeft className="h-4 w-4" aria-hidden="true" />
       </button>
       <button type="button" onClick={onFwd} disabled={!canFwd} aria-label="Go forward" title="Forward (Alt+Right)" className={iconButtonClass(!canFwd)}>
         <ArrowRight className="h-4 w-4" aria-hidden="true" />
       </button>
-      <button type="button" onClick={onReload} disabled={!url} aria-label="Reload page" title="Reload" className={`${iconButtonClass(!url)} hidden sm:flex`}>
+      <button type="button" onClick={onReload} disabled={!url} aria-label="Reload page" title="Reload" className={iconButtonClass(!url)}>
         <RotateCw className={`h-4 w-4 ${loading ? "animate-spin text-emerald-400" : ""}`} aria-hidden="true" />
       </button>
       <button type="button" onClick={onHome} aria-label="Home (new tab page)" title="Home" className={`${iconButtonClass(false)} hidden sm:flex`}>
@@ -215,8 +217,8 @@ export default function Toolbar(props: ToolbarProps) {
       {/* omnibox */}
       <div className="relative mx-1 min-w-0 flex-1">
         <div
-          className={`flex h-9 items-center gap-2 rounded-full border px-3 transition-colors ${
-            focused ? "border-emerald-500/60 bg-zinc-900 ring-2 ring-emerald-500/20" : "border-zinc-700/80 bg-zinc-800/60 hover:border-zinc-600"
+          className={`cw-field flex h-10 items-center gap-2 rounded-lg border px-3 transition-colors ${
+            focused ? "border-emerald-400/70 bg-[var(--browser-field)] ring-2 ring-emerald-400/10" : "border-white/8 bg-[var(--browser-field)] hover:border-white/20"
           }`}
         >
           <OmniboxLeadingIcon url={url} secure={secure} />
@@ -256,7 +258,7 @@ export default function Toolbar(props: ToolbarProps) {
             spellCheck={false}
             autoComplete="off"
             aria-label="Address and search bar"
-            placeholder="Search Bing or enter a website address"
+            placeholder="Search or enter an address"
             className="min-w-0 flex-1 bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
           />
           {zoom !== 1 && (
@@ -288,7 +290,7 @@ export default function Toolbar(props: ToolbarProps) {
 
         {/* suggestions dropdown */}
         {showDrop && (
-          <div className="absolute left-0 right-0 top-full z-30 mt-2 overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 shadow-2xl shadow-black/50" role="listbox" aria-label="Address bar suggestions">
+          <div className="absolute left-0 right-0 top-full z-30 mt-2 overflow-hidden rounded-lg border border-[var(--browser-border)] bg-[var(--popover)] shadow-2xl shadow-black/50" role="listbox" aria-label="Address bar suggestions">
             {suggestions.map((s, i) => (
               <button
                 key={`${s.kind}-${i}`}
@@ -373,6 +375,7 @@ export default function Toolbar(props: ToolbarProps) {
       </button>
 
       {/* three-dot menu */}
+      <button type="button" onClick={onOpenExtensions} aria-label="Extensions" title="Extensions" className={`${iconButtonClass(false)} hidden md:flex`}><Puzzle className="h-4 w-4" aria-hidden="true" /></button>
       <div className="relative">
         <button
           ref={menuBtnRef}
@@ -423,6 +426,10 @@ export default function Toolbar(props: ToolbarProps) {
               <Download className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden="true" />
               <span className="flex-1 text-left">Downloads</span>
               <span className="text-[10px] text-zinc-600">Ctrl+J</span>
+            </button>
+            <button type="button" role="menuitem" className={menuRowClass} onClick={() => { setMenuOpen(false); onOpenExtensions(); }}>
+              <Puzzle className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden="true" />
+              <span className="flex-1 text-left">Extensions</span>
             </button>
             <button type="button" role="menuitem" className={menuRowClass} onClick={() => { setMenuOpen(false); onOpenSettings(); }}>
               <Settings className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden="true" />

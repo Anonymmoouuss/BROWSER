@@ -15,6 +15,179 @@ extended into a self-hosted multi-service workspace.
 
 ## Current Deployment Status (2026-10-27)
 
+### Full-site YouTube, No Embedded Player (2026-11-02)
+
+A direct official-player trial was implemented, tested, and confirmed by the
+user to play. The user then explicitly required no embedded player anywhere
+and no home-network relay. The trial was removed; the current browser keeps
+full YouTube/Shorts through Scramjet. General missing-frame reload handling
+was retained as a browser fix. No account data or approval policy changed.
+
+With the current shared Codespace connection, Google can still require bot
+verification or account sign-in. No anonymous full-site playback guarantee
+is made. Automatically creating accounts does not remove network reputation
+or identity-verification requirements; the app does not create shared Google
+accounts, collect passwords, or automate CAPTCHA/phone verification. A usable
+normal connection, legitimate user verification, or a supported player requires
+relaxing at least one of the currently rejected alternatives.
+
+No-embed recheck: 24 focused tests, full lint/typecheck, fresh production build,
+and five targeted full-site browser regressions. The full browser suite and
+real WebAuthn/owner-approval fixture passed before the player was withdrawn.
+The earlier direct-player tests were transport/control fixtures, not proof
+that the Codespace streamed public YouTube media.
+
+The Vercel project's read-only integration listing reported no attached
+resources. The prepared Neon database and Postgres migration remain separate
+from video routing; neither the live datasource nor account data was changed.
+
+### Owner-approved Passkeys (2026-11-02)
+
+The additional access gate is tied to approved member passkeys, not a
+supposedly personal IP. New additive fields store approval and bounded
+observed network/browser context; member session records are bound to the
+verified passkey. Unapproved successful sign-ins receive only an expiring
+private approval-status receipt, never a browsing session/grant. Members
+check approval and sign in again after the owner approves.
+
+Use Admin Panel -> Devices to approve/revoke. Only fully authenticated
+administrators can mutate approval, from a configured trusted origin.
+Owner administration remains available so the owner is not locked out.
+Revocation deletes member sessions; engine assets and HTTP proxies check
+current authorization, and established Wisp/console sockets are rechecked
+every 15 seconds. API outages no longer fall back to signature-only approval.
+
+Existing member passkeys default to unapproved. The activation process takes
+a private database/key backup and compares preserved account, face, payment,
+public credential, and secret content after the additive migration. Existing
+passcodes, biometric data, passkeys, and signing key are not reset.
+
+IP addresses and User-Agent strings are review context only, not hardware
+attestation. Networks can share/change addresses and request metadata can be
+spoofed. Synced passkeys can work on several computers; this is not an
+IP-only lock or a guarantee of physical-device binding. The public access
+portal stays visible while authorized browsing/private data are protected.
+
+The connected Neon resource did not change this app's production datasource:
+inspection found a file: DATABASE_URL and no attached Neon/Postgres variables.
+SQLite remains active. Connecting the Marketplace resource is not a tested
+schema/data migration; no private data has been transferred to Neon here.
+
+Add-on importing now also accepts bounded `.user.js` scripts with explicit
+HTTP(S) @match metadata, page context, @grant none and document-end/idle timing.
+Privileged manager APIs and external dependencies are rejected. This does
+not implement Helium/Chrome's native extension engine or bypass YouTube rules.
+
+Verified: 24 focused tests, full lint/typecheck, fresh production build,
+real WebAuthn/approval/replay/tampering tests, and sixteen browser cases.
+Tests verify valid socket survival, denied unapproved sessions, revoked
+HTTP grants and open-socket closure, trusted-origin admin writes, owner-panel
+privacy/mobile sizing, and real imported userscript execution.
+
+### Connection Recovery and Minimal Home (2026-11-02)
+
+Explicit navigations now create fresh Scramjet frames and remove old routing
+registrations and stale callbacks. Known plain-text engine failures show a
+recoverable page screen, including connection error 7, DNS error 6, and
+timeout error 28. Retry uses a fresh navigation; Compatibility mode uses the
+existing curl-backed proxy. Its banner switches back to the full engine on
+the current page, not an earlier URL. Offline/network-blocked destinations
+can still fail, but later navigation remains usable.
+
+The home page uses a centered search/address field, compact site shortcuts,
+and an unframed utility row with the existing wallpaper controls. Verified:
+full lint/typecheck, fresh production build, 23 focused tests, the real
+virtual-authenticator suite, and fourteen Chromium browser tests. Added
+coverage waits for actual frame URL commits before reading page content,
+checks registration cleanup over repeated site changes, and exercises failed
+destination -> retry -> compatibility -> working page -> full engine.
+Wikipedia, GitHub, Hacker News, and MDN loaded in the committed-document
+site matrix. This is not a guarantee of universal website access.
+
+### Appearance and Compatible Extensions (2026-11-02)
+
+The new-tab wallpaper is a local full-cover photo, with Summit/Ocean/Forest
+presets, a Graphite option, private image uploads, dimming, clock/quick-link
+toggles, and reset. Controls are available through the new-tab sliders icon
+and Settings -> Appearance. Uploads are raster-only, resized, bounded, and
+saved to this browser's local storage; no image upload API is involved.
+
+`about:extensions`, the toolbar puzzle icon, and the browser menu open a local
+Manifest V3 content-script installer. It accepts compatible ZIP packages,
+shows requested site matches, requires explicit trust, and supports
+enable/disable/remove. JavaScript and CSS apply once to matching loaded web
+documents, never to the workspace interface; reload matching pages after a
+change. Site patterns, archive paths, expanded sizes, and storage are bounded.
+
+This is not a Chrome extension engine. There are no Chrome APIs, isolated
+worlds, background/service workers, browser permissions, extension popups,
+native messaging, CRX/Web Store installation, or automatic updates. Imports
+requiring these are rejected rather than shown as working. Compatible code
+runs in page context and must be trusted with page data. Use real
+Chrome/Chromium when a native extension is required. A minimal package
+example is in README.md.
+
+Verified: 22 focused tests, full lint/typecheck, fresh production build, real
+virtual-authenticator sign-in with replay/origin/signature rejection, and
+twelve browser regressions. Real-page tests cover extension CSS/DOM changes,
+consent, disable/remove, compatibility errors, wallpaper persistence/upload,
+and 320/390px controls. Screenshots exposed and verified a fix for the old
+grid background rule accidentally tiling photo wallpapers.
+
+YouTube still controls its bot/sign-in, IP, age/region, and playback rules.
+No wallpaper, extension importer, or browser styling change can guarantee
+anonymous playback. Full-site YouTube/Shorts and the explicit original-site
+fallback remain intact; no account cookies or verification bypasses are used.
+
+### WebAuthn Update (2026-11-02)
+
+The login chain is now **password -> face -> passkey**. SimpleWebAuthn handles
+real credential creation and assertion-signature verification. Successful
+face scans produce a five-minute stage token, not a session. Sessions and
+proxy grants require a completed passkey ceremony; old two-factor grants do
+not satisfy the new gate. Existing accounts and face data are preserved.
+
+On first login, existing users enroll a passkey after verifying their face.
+New face enrollments also complete passkey enrollment before their pending
+approval screen. An enrolled account must use its existing passkey on the
+same workspace hostname. Administrator recovery codes plus a new face scan
+can replace a lost admin authenticator; the bootstrap web reset is disabled
+once an administrator is enrolled. Never delete the database for recovery.
+
+Open the workspace in its own HTTPS browser tab. Press **Continue with
+passkey** to trigger Touch ID, Windows Hello, a passkey PIN, or a security-key
+prompt. Cross-origin preview frames get a clear open-in-own-tab action.
+Unsupported devices get an error with alternatives, not an indefinite wait
+or an automatic authentication bypass. Passkeys may sync across devices;
+"fingerprint-only", "unextractable", and "always device-locked" are not
+guarantees this website can make. No fingerprint images leave the device.
+
+Set `WEBAUTHN_ORIGINS` on the backend to a comma-separated list of exact
+trusted frontend origins when changing deployment domains. Defaults include
+the production Vercel URL, the current Codespace gateway, and local 3000/8080
+development. RP IDs are browser-default hostnames; the server verifies the
+stored exact origin/RP pair, not arbitrary supplied hints. Challenges are
+single-use, expire after two minutes, and bind to the face-verified stage.
+User verification is required; ES256/RS256/EdDSA are pinned. Counters are
+updated and checked where supported; zero-counter/synced credentials mean
+counters alone cannot guarantee clone detection.
+
+Verified: 17 focused tests, full lint/typecheck, a production build, real
+Chromium virtual-authenticator registration/assertion and negative checks,
+and all ten existing browser regressions using a passkey-complete session.
+Run the new authentication fixture on an empty disposable backend with:
+
+```bash
+E2E_FRONTEND_ORIGIN=http://localhost:9181 bun run test:webauthn
+E2E_FRONTEND_ORIGIN=http://localhost:9181 E2E_BACKEND_ORIGIN=http://localhost:9181 \
+   E2E_PASSKEY_SESSION_FILE=.runtime/passkey-test-session.json bun run test:browser
+```
+
+The backend must allow that exact test origin through `WEBAUTHN_ORIGINS`.
+Virtual-authenticator coverage does not claim that physical biometric
+hardware was exercised. The older two-factor-only API fixture is historical;
+use the new browser-based WebAuthn fixture for current authentication checks.
+
 The restored app runs locally at **http://localhost:8080**. Both local
 production and Vercel-mode builds have been verified. A separate-origin
 frontend/backend was checked in Chromium, including real proxied page
@@ -254,6 +427,33 @@ the hosting platform can restart the complete stack.
 
 ## 6. Vercel + Persistent Backend
 
+### Free-only Hosting Status
+
+The user requires free hosting. Vercel Hobby is already connected. A Neon
+resource named `browser-workspace-free-db` is ready on the explicit
+`free_v3` / Free Marketplace plan; built-in Neon auth was disabled to avoid
+replacing this application's password/face/WebAuthn policy. Provisioning used
+`--no-connect --no-env-pull`, so no environment variable was overwritten and
+the current application/database was not switched. Connection secrets were
+not printed or committed. No paid resource was created.
+
+The app still uses SQLite, not that empty Neon database. Before activating
+Postgres: create and validate a PostgreSQL Prisma schema/client; transfer
+records with a private backup and maintenance window; preserve IDs, encrypted
+face data, secrets, passkeys/counters and date values; advance generated ID
+sequences; test login, recovery, payments and proxy grants against a disposable
+copy; then configure the approved server-side connection and cut over. Keep
+the public frontend hostname unchanged for existing passkey RP bindings. Do
+not paste a Neon connection string into chat or public configuration.
+
+Neon does not run Caddy, face inference, Bun proxy processes, or persistent
+Wisp WebSockets. Those still need compute. This Codespace's free allowance
+and idle shutdown are not an always-on hosting guarantee, and overage charges
+can apply. Use an existing machine or an eligible free VM with enough memory
+for a free-only deployment; availability/quotas/provider rules must be checked
+before claiming a permanently free service. The paid Render example below
+must not be deployed under the current free-only constraint.
+
 Vercel can host the frontend, **not the complete stack**. The backend must
 remain online for authentication, SQLite, face inference, and persistent
 WebSockets. No paid resources have been created automatically.
@@ -413,6 +613,7 @@ logs as sensitive, and run only on a host you trust with shell access.
 
 | Symptom | Fix |
 |---|---|
+| Internal Service Worker Error / connection error 7 | Use the new Retry page / Compatibility mode controls. Each explicit navigation gets a fresh engine frame. A destination that is offline or blocked by the hosting network may still be unreachable. |
 | Login says "invalid response" | Start `./start-all.sh`; check `.runtime/app.log`. On Vercel, check `BACKEND_ORIGIN` and backend availability. |
 | Browser tab won't unlock / engine never connects | Check `.runtime/scramjet.log`, the Caddy gateway, and direct WebSocket reachability to the backend. |
 | Camera login always fails | Check `.runtime/face-auth.log`, lighting/frame quality, and camera permission. Public camera access requires HTTPS. |

@@ -13,6 +13,7 @@ import {
   TTL,
 } from "./crypto";
 import { billingPeriod, billingPeriodAt, PAYMENT_AMOUNT_CENTS } from "./billing";
+import { beginPasskey, handlePasskey } from "./passkeys";
 
 /**
  * SCRM-style access service (ported from devperson8000/SCRM
@@ -288,18 +289,22 @@ export class AccessService {
       where: { hash },
       include: { user: true },
     });
-    if (!token || token.kind !== "session" || token.expiresAt <= new Date())
+    if (!token || token.kind !== "session" || token.purpose !== "webauthn" || token.expiresAt <= new Date())
       return null;
     const user = token.user;
     if (!user || user.status !== "approved") return null;
     if (role && user.role !== role) return null;
     // The same live payment condition protects cookies and the proxy.
-    if (user.role !== "admin" && !(await this.hasCurrentPayment(user.id)))
-      return null;
+    if (user.role !== "admin") {
+      if (!token.passkeyId) return null;
+      const credential = await adb.accessPasskey.findUnique({ where: { id: token.passkeyId }, select: { userId: true, approved: true } });
+      if (!credential?.approved || credential.userId !== user.id || !(await this.hasCurrentPayment(user.id))) return null;
+    }
     return { id: token.hash, userId: user.id, role: user.role as "user" | "admin", name: user.name };
   }
 
   async cleanup() {
+    await adb.accessPasskeyChallenge.deleteMany({ where: { expiresAt: { lt: new Date() } } });
     const stale = new Date(Date.now() - 604_800_000);
     await adb.accessUser.updateMany({
       where: { status: "pending", createdAt: { lt: stale } },
@@ -350,9 +355,11 @@ export class AccessService {
     body: Record<string, unknown>,
     credentials: Credentials,
     address: string,
+    origin = "",
+    agent = "",
   ): Promise<Result> {
     try {
-      return await this.run(action, body ?? {}, credentials, address);
+      return await this.run(action, body ?? {}, credentials, address, origin, agent);
     } catch (error) {
       if (error instanceof AuthError)
         return { status: error.status, body: { error: error.message } };
@@ -365,12 +372,29 @@ export class AccessService {
     body: Record<string, unknown>,
     credentials: Credentials,
     address: string,
+    origin: string,
+    agent: string,
   ): Promise<Result> {
     if (action === "init") {
       await this.throttle(address, "init", 10, 3_600_000);
       return this.init(body.userPassword, body.adminPassword);
     }
     const config = (await this.getConfig()) ?? deny(503, "This workspace is not set up yet.");
+
+    if (action.startsWith("passkey-")) {
+      await this.throttle(address, "passkey", 60);
+      return handlePasskey(action, body, origin, { address, agent });
+    }
+
+    if (action === "device-status") {
+      await this.throttle(address, "device-status", 30, 60_000);
+      const receipt = typeof body.receipt === "string" && /^[a-f0-9]{64}$/.test(body.receipt) ? body.receipt : "";
+      const token = receipt ? await adb.accessToken.findUnique({ where: { hash: hashSecret(receipt) } }) : null;
+      if (!token || token.kind !== "device-receipt" || token.expiresAt <= new Date() || !token.purpose || !token.userId) deny(401, "The approval request expired. Sign in again.");
+      const credential = await adb.accessPasskey.findUnique({ where: { id: token.purpose }, select: { userId: true, approved: true } });
+      if (!credential || credential.userId !== token.userId) deny(404, "This approval request no longer exists.");
+      return { status: 200, body: { status: credential.approved ? "approved" : "pending" } };
+    }
 
     if (action === "session") {
       const session = await this.getSession(credentials.session);
@@ -397,6 +421,9 @@ export class AccessService {
      *  enrolled, which would otherwise brick the workspace. */
     if (action === "reset") {
       await this.throttle(address, "reset", 5, 3_600_000);
+      if (await adb.accessUser.count({ where: { role: "admin" } })) {
+        deny(403, "Administrator setup is complete. Use your recovery codes or private server-owner recovery.");
+      }
       if (
         typeof body.adminPassword !== "string" ||
         Buffer.byteLength(body.adminPassword) > 512
@@ -409,6 +436,7 @@ export class AccessService {
       await adb.accessPayment.deleteMany({});
       await adb.accessRate.deleteMany({});
       await adb.accessAudit.deleteMany({});
+      await adb.accessPasskeyChallenge.deleteMany({});
       await adb.accessConfig.deleteMany({});
       this.config = undefined;
       await adb.accessAudit.create({
@@ -418,7 +446,7 @@ export class AccessService {
     }
 
     if (action === "logout") {
-      const hashes = [credentials.session, credentials.preauth]
+      const hashes = [credentials.session, credentials.preauth, typeof body.passkeyStageToken === "string" ? body.passkeyStageToken : undefined]
         .filter(Boolean)
         .map((raw) => tokenHash(raw))
         .filter(Boolean);
@@ -621,28 +649,8 @@ export class AccessService {
           402,
           "Payment required. Your A$5 monthly payment needs administrator confirmation. Contact the administrator, then retry your scan.",
         );
-      const ttl = user.role === "admin" ? TTL.adminSession : TTL.userSession;
-      const session = await this.createToken(
-        "session",
-        user.role,
-        user.id,
-        { preauth: pre.hash },
-        ttl,
-      );
       await adb.accessToken.delete({ where: { hash: pre.hash } });
-      await this.audit(user.id, "login", user.id);
-      return {
-        status: 200,
-        body: {
-          unlocked: user.role === "user",
-          role: user.role,
-          sessionToken: session,
-        },
-        session,
-        sessionRole: user.role as "user" | "admin",
-        sessionName: user.name,
-        sessionTtl: ttl,
-      };
+      return beginPasskey(user, "login");
     }
 
     if (action === "enroll") {
@@ -669,15 +677,8 @@ export class AccessService {
           reviewPhoto: seal(preview, config.templateKey, id),
         },
       });
-      const receipt = await this.createToken(
-        "receipt",
-        "user",
-        id,
-        {},
-        TTL.receipt,
-      );
       await this.audit(null, "enroll", id);
-      return { status: 202, body: { status: "pending", receipt } };
+      return beginPasskey({ id, name: (body.name as string).trim(), role: "user" }, "enroll");
     }
 
     if (pre.role !== "admin")
@@ -714,6 +715,7 @@ export class AccessService {
         },
       });
       await adb.accessToken.deleteMany({ where: { userId: existing.id } });
+      await adb.accessPasskey.deleteMany({ where: { userId: existing.id } });
     }
     const recoveryCodes: string[] = [];
     for (let i = 0; i < 8; i++) {
@@ -729,23 +731,11 @@ export class AccessService {
         },
       });
     }
-    const session = await this.createToken(
-      "session",
-      "admin",
-      id!,
-      { preauth: pre.hash },
-      TTL.adminSession,
-    );
-    await adb.accessToken.delete({ where: { hash: pre.hash } });
+    await adb.accessToken.deleteMany({ where: { hash: pre.hash } });
     await this.audit(id!, action, id!);
-    return {
-      status: 200,
-      body: { role: "admin", recoveryCodes, sessionToken: session },
-      session,
-      sessionRole: "admin",
-      sessionName: "Administrator",
-      sessionTtl: TTL.adminSession,
-    };
+    const stage = await beginPasskey({ id: id!, name: "Administrator", role: "admin" }, action);
+    stage.body.recoveryCodes = recoveryCodes;
+    return stage;
   }
 
   /* ------------------------------ admin ------------------------------ */
@@ -760,6 +750,29 @@ export class AccessService {
       (await this.getSession(raw, "admin")) ??
       deny(403, "Administrator authentication required.");
     await this.throttle(address, "admin", 120, 60_000);
+
+    if (action === "devices") {
+      const devices = await adb.accessPasskey.findMany({
+        orderBy: { createdAt: "desc" }, take: 500,
+        select: { id: true, rpId: true, approved: true, approvedAt: true, requestAddress: true, requestAgent: true, backedUp: true, deviceType: true, createdAt: true, lastUsedAt: true, user: { select: { id: true, name: true, role: true, status: true } } },
+      });
+      return { status: 200, body: { devices: devices.map(({ id, ...device }) => ({ ...device, id, owner: device.user.role === "admin" })) } };
+    }
+
+    if (action === "approve-device" || action === "revoke-device") {
+      if (typeof body.id !== "string" || body.id.length > 2000) deny(400, "Choose a valid passkey request.");
+      const device = await adb.accessPasskey.findUnique({ where: { id: body.id }, include: { user: { select: { role: true, status: true } } } });
+      if (!device || device.user.role !== "user") deny(404, "Member passkey not found.");
+      if (action === "approve-device" && !["approved", "pending"].includes(device.user.status)) deny(409, "This member no longer has an active enrollment.");
+      await adb.$transaction(async (transaction) => {
+        await transaction.accessPasskey.update({ where: { id: device.id }, data: { approved: action === "approve-device", approvedAt: action === "approve-device" ? new Date() : null } });
+        if (action === "revoke-device") {
+          await transaction.accessToken.deleteMany({ where: { userId: device.userId, kind: "session" } });
+        }
+        await transaction.accessAudit.create({ data: { actor: session.userId, action, target: device.userId } });
+      });
+      return { status: 200, body: { ok: true } };
+    }
 
     if (action === "payments") {
       const users = await adb.accessUser.findMany({

@@ -1,5 +1,145 @@
 # Coding Workspace — Worklog / Handover Document
 
+## Direct-player Trial Withdrawn at User Request (2026-11-02)
+
+- The user tested the in-tab official player and confirmed video worked, but
+  rejected embedded playback and chose full normal YouTube with no embeds.
+  They also rejected using their home computer/network as the relay.
+- Removed this task's player mode, video parsing helper and mode-specific
+  tests; restored ordinary full-site Scramjet behavior. Kept the general
+  reload fallback when a tab has no registered proxy frame.
+- Updated current documentation to remove playback instructions that no
+  longer apply. Account data, passkeys, approval rules, original-site fallback,
+  and existing add-on/browser work remain untouched.
+- Google bot/network verification remains unresolved for anonymous full-site
+  playback on this Codespace. Automatic account creation is not presented as
+  a solution, and no account sharing or phone/CAPTCHA automation was added.
+- After removing the trial, reran a fresh production build, 24 focused tests,
+  full lint/typecheck, and five targeted real-browser tests for full-site
+  Scramjet, search/reload, Shorts, frame cleanup and failed-page recovery.
+  The original hostname was redeployed and public access/private-file checks
+  passed. Removed only this task's isolated runtime and temporary data.
+
+## Opt-in Direct YouTube Player Inside the Browser (2026-11-02)
+
+- The user confirmed the public sample video plays signed out in their normal
+  browser. Added an explicit in-tab official-player option to avoid the
+  Codespace's shared proxy connection for that video, not a false claim of
+  disabling Google's verification. Full-site Scramjet and Shorts stay default.
+- Strict known-host/video-ID parsing strips all workspace tokens and unknown
+  parameters, preserves timestamps, and exposes only official embed/watch
+  URLs. Native iframe media permissions and referrer policy are explicit.
+- Added Full site / Play on this device controls using the tab's current URL,
+  with direct player reload and mobile sizing. The option remains accessible
+  during engine startup failure rather than waiting on the proxy.
+- Verified a fresh production build, full lint/typecheck, 27 focused tests,
+  real WebAuthn/owner approval fixture, and eighteen browser regressions.
+  Direct transport routing was mocked for deterministic assertions; actual
+  datacenter media playback did not advance and is not claimed successful.
+- Vercel project integration metadata showed no attached resource. Neon
+  storage does not change YouTube egress, and no DB migration, paid resource,
+  Google-cookie sharing, or editor-extension installation was needed.
+
+## Owner-approved Access and Userscripts (2026-11-02)
+
+- Added passkey approval state and bounded IP/browser context, plus the
+  verified passkey ID on member sessions. This deliberately does not pretend
+  an IP identifies a computer or a synced passkey is physically device-bound.
+- Successful unapproved member verification produces a private expiring
+  receipt/pending screen, never a browsing session. Admin Panel Devices lists
+  requests without public-key material and supports owner-only approve/revoke;
+  mutation origins must be trusted. Owner three-factor admin access remains.
+- Current session checks require the approved bound passkey. Revocation drops
+  member sessions, rejects new HTTP proxy/engine requests, and closes open
+  Wisp/console sockets at the next 15-second check. Authorization failures
+  fail closed rather than trusting a still-signed but revoked grant.
+- Added .user.js imports through the existing review/consent interface, with
+  strict matching, page context, bounded code, and no manager APIs or external
+  dependencies. No claim is made of native Chrome extension compatibility.
+- Verified a fresh production build, full lint/typecheck, 24 focused tests,
+  real virtual-authenticator approval/revocation including valid live sockets,
+  and sixteen browser tests for existing features, devices, and userscripts.
+- Backed up the original SQLite data privately and applied only additive
+  fields. Preserved-record comparisons passed for both accounts, both existing
+  passkeys, face/payment/config data, and signing key. Existing member passkeys
+  require owner approval; no passcode or authenticator was reset.
+- Production environment metadata still uses file: SQLite, with no attached
+  Neon/Postgres variables. No database migration or paid resource was created.
+  Keep the original Vercel hostname because both real passkeys are bound to it.
+
+## Navigation Recovery and Free Hosting Plan (2026-11-02)
+
+- Traced the reported error to the controller's plain-text 500 response for
+  libcurl connection failures. Health checks for the app and engine passed.
+- Changed explicit navigation to create a fresh engine frame, remove old
+  routing registrations, and ignore stale navigation callbacks. Added a
+  recoverable connection screen with Retry, Compatibility mode, and a clean
+  original-site link. Fixed current-URL tracking when switching back from
+  compatibility mode after further navigation.
+- Added committed-document cross-site tests, exact connection-error parsing,
+  and a recovery round trip from a refused destination to a working page and
+  back to the full engine. Live committed pages loaded for Wikipedia, GitHub,
+  Hacker News, and MDN. Do not count previous iframe content as a successful
+  new navigation; wait for its actual URL commit.
+- Simplified the home page to centered search, compact site icons, and a
+  separate unframed utility row, preserving wallpaper and local preferences.
+- Verified a fresh build, full lint/typecheck, 23 focused cases, the real
+  WebAuthn fixture, and fourteen Chromium browser cases in disposable storage.
+- User explicitly required free hosting. Neon CLI browser auth timed out,
+  but Vercel Marketplace supported an explicit free_v3 plan. Provisioned the
+  unconnected Free resource browser-workspace-free-db with Neon auth off and
+  no environment pull. No paid resource, data transfer, or database-provider
+  switch occurred. Actual Postgres migration and separate free compute remain
+  distinct next steps; Neon cannot run the long-lived browser services.
+
+## Wallpaper and Compatible Extensions (2026-11-02)
+
+- Added credited, locally served landscape wallpapers and a persistent
+  appearance store with preset selection, raster upload/resizing, dimming,
+  clock/quick-link toggles, cross-tab updates, and reset. The new tab keeps
+  existing browser controls and uses readable translucent graphite surfaces.
+- Screenshot review caught the old 48px grid background-size overriding the
+  wallpaper utility. Added an explicit cover/no-repeat override and a browser
+  assertion for both properties, not just the image URL.
+- Added an about:extensions page and toolbar/menu entry. Compatible Manifest
+  V3 ZIPs can install top-page CSS/JavaScript with declared site matching,
+  explicit trust, local persistence, enable/disable, and removal. Execution
+  reuses the tested page-script boundary and never targets workspace pages.
+- Used fflate for bounded archive parsing. Reject unsafe paths, oversized
+  sources, and Chrome-only capabilities. There is deliberately no claim of
+  native Chrome APIs, background workers, CRX/Web Store installation, isolated
+  extension worlds, or automatic updates. Trusted code shares page context.
+- Verified full lint/typecheck, a fresh build, 22 focused tests, real WebAuthn
+  ceremonies and negative checks, and twelve Chromium browser regressions.
+  Used a uniquely named temporary runtime and data outside the workspace;
+  localhost is required for the local passkey RP domain, not an IP literal.
+- Real wallpaper upload/persistence/mobile tests and extension CSS/JS,
+  consent, disable/remove, and unsupported-package tests passed. Existing
+  account data, biometric credentials, passkeys, and keys were not changed.
+- Full-site YouTube and its original-site fallback remain. The previously
+  observed datacenter bot gate is still an upstream limitation, not bypassed.
+
+## WebAuthn and Sign-in Recovery Release (2026-11-02)
+
+- Finished the pending graphite/cyan browser chrome, local favicon/touch
+  icons, stable mobile tabs, and automatic sign-in recovery on focus/online
+  and visible-page retries. Existing functionality and account data remain.
+- Added real SimpleWebAuthn registration/assertion after password and face
+  verification. Face success produces a short-lived stage token; only a
+  verified ceremony mints the session and a passkey-marked engine grant.
+- Enforced exact trusted origins and RP hostnames, single-use expiring
+  challenges, required user verification, classic algorithms, signature
+  checks, credential ownership, and counter updates. No arbitrary origin
+  hint or no-sensor skip can grant access. Preview frames open a real tab.
+- Added additive public-credential/challenge storage. Existing users enroll
+  after their next password/face success; existing hashes, faces, and keys
+  are preserved. Recovery requires existing admin recovery proof, not a
+  password-only bootstrap reset. Passkeys can sync and are not promised to
+  be fingerprint-only or physically bound to one machine.
+- Verified a fresh production build, full lint/typecheck, 17 focused cases,
+  real virtual-authenticator enrollment/login with replay/signature/origin
+  negative checks, and ten browser regressions using the resulting session.
+
 ## Source Verification Before Commit (2026-11-01)
 
 - Fixed bookmarklet error reporting at the owning page-evaluation boundary:

@@ -149,6 +149,8 @@ async function handlePost(req: NextRequest) {
     body ?? {},
     await credentials(req),
     clientAddress(req),
+    req.headers.get("origin") ?? req.nextUrl.origin,
+    req.headers.get("user-agent") ?? "",
   );
 
   const secure = isSecure(req);
@@ -176,6 +178,7 @@ async function handlePost(req: NextRequest) {
       tid: result.session,
       role: result.sessionRole,
       name: result.sessionName,
+      amr: "webauthn",
       exp: Date.now() + result.sessionTtl,
     });
     result.body.sessionToken = result.session;
@@ -188,6 +191,11 @@ async function handlePost(req: NextRequest) {
     status: result.status,
     headers: { "cache-control": "no-store", vary: "Cookie" },
   });
+
+  if (result.body.passkeyRequired === true) {
+    res.cookies.delete(PREAUTH_COOKIE);
+    res.cookies.delete(ACCESS_COOKIE);
+  }
 
   if (result.clear) {
     res.cookies.delete(PREAUTH_COOKIE);

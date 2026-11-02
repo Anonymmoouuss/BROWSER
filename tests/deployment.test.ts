@@ -7,6 +7,74 @@ import NewTabPage from "../src/components/browser/new-tab-page";
 import { accessRequest, accessSession } from "../src/components/access/access-client";
 import { normalizeInput, serviceWebSocketUrl } from "../src/lib/browser/shared";
 import { bookmarkletSource, createBookmarklet, isBookmarklet, pageScriptError, runPageScript } from "../src/lib/browser/bookmarklets";
+import { DEFAULT_APPEARANCE, normalizeAppearance, wallpaperImage } from "../src/lib/browser/appearance";
+import { strToU8, zipSync } from "fflate";
+import { extensionMatches, parseExtensionArchive, parseUserscript } from "../src/lib/browser/extensions";
+import { proxyPageFailure } from "../src/lib/browser/page-failure";
+
+test("known upstream engine failures become recoverable page errors, not normal website content", () => {
+  expect(proxyPageFailure("Internal Service Worker Error: TypeError: Request failed with error code 7: Could not connect to server", "text/plain"))
+    .toMatchObject({ code: 7, message: expect.stringContaining("could not connect") });
+  expect(proxyPageFailure("Internal Service Worker Error: TypeError: Request failed with error code 6: Could not resolve host", "text/plain;charset=UTF-8")?.code).toBe(6);
+  expect(proxyPageFailure("Internal Service Worker Error: Timeout", "text/html")).toBeNull();
+  expect(proxyPageFailure("A page discussing Internal Service Worker Error", "text/plain")).toBeNull();
+  expect(proxyPageFailure("Example Domain", "text/html")).toBeNull();
+});
+
+test("compatible extension archives load page scripts and styles without Chrome privileges", () => {
+  const manifest = { manifest_version: 3, name: "Page marker", version: "1.0", content_scripts: [{ matches: ["https://example.com/*"], js: ["content.js"], css: ["page.css"] }] };
+  const extension = parseExtensionArchive(zipSync({ "manifest.json": strToU8(JSON.stringify(manifest)), "content.js": strToU8('document.body.dataset.extension = "installed";'), "page.css": strToU8("body { outline: 3px solid cyan; }") }));
+  expect(extension.name).toBe("Page marker");
+  expect(extension.rules[0].javascript).toContain("installed");
+  expect(extension.rules[0].css).toContain("outline");
+});
+
+test("extension packages reject Chrome-only capabilities and unsafe archive paths", () => {
+  const manifest = { manifest_version: 3, name: "Unsupported", version: "1.0", content_scripts: [{ matches: ["<all_urls>"], js: ["content.js"] }] };
+  for (const extra of [{ background: { service_worker: "background.js" } }, { permissions: ["cookies"] }, { action: { default_popup: "popup.html" } }]) {
+    expect(() => parseExtensionArchive(zipSync({ "manifest.json": strToU8(JSON.stringify({ ...manifest, ...extra })), "content.js": strToU8("void 0;") }))).toThrow("Chrome");
+  }
+  expect(() => parseExtensionArchive(zipSync({ "../manifest.json": strToU8(JSON.stringify(manifest)) }))).toThrow("unsafe");
+  expect(() => parseExtensionArchive(zipSync({ "manifest.json": strToU8(JSON.stringify(manifest)) }))).toThrow("missing");
+});
+
+test("extension matching obeys schemes, host boundaries, and page paths", () => {
+  expect(extensionMatches("https://*.example.com/*", "https://example.com/page")).toBe(true);
+  expect(extensionMatches("https://*.example.com/*", "https://sub.example.com/page")).toBe(true);
+  expect(extensionMatches("https://*.example.com/*", "https://example.com.evil.test/page")).toBe(false);
+  expect(extensionMatches("https://example.com/news/*", "https://example.com/news/today")).toBe(true);
+  expect(extensionMatches("https://example.com/news/*", "https://example.com/shop")).toBe(false);
+  expect(extensionMatches("https://example.com/*", "http://example.com/")).toBe(false);
+  expect(extensionMatches("<all_urls>", "javascript:alert(1)")).toBe(false);
+  expect(extensionMatches("<all_urls>", "about:config")).toBe(false);
+});
+
+test("userscripts import only bounded page-context code with explicit site matches", () => {
+  const source = '// ==UserScript==\n// @name Page marker\n// @version 1.0\n// @match https://example.com/*\n// @grant none\n// ==/UserScript==\ndocument.body.dataset.userscript = "ok";';
+  const script = parseUserscript(source);
+  expect(script.name).toBe("Page marker");
+  expect(script.rules[0].matches).toEqual(["https://example.com/*"]);
+  expect(script.rules[0].javascript).toContain('dataset.userscript = "ok"');
+  expect(() => parseUserscript(source.replace("@grant none", "@grant GM_xmlhttpRequest"))).toThrow("Manager APIs");
+  expect(() => parseUserscript(source.replace("@grant none", "@require https://example.com/code.js"))).toThrow("dependencies");
+  expect(() => parseUserscript(source.replace("https://example.com/*", "file:///*"))).toThrow("HTTP");
+  expect(() => parseUserscript("document.body.remove()")).toThrow("metadata");
+});
+
+test("appearance settings validate local wallpaper choices and clamp dimming", () => {
+  expect(normalizeAppearance(null)).toEqual(DEFAULT_APPEARANCE);
+  expect(normalizeAppearance({ wallpaper: "ocean", dim: 100, showClock: false })).toMatchObject({ wallpaper: "ocean", dim: 75, showClock: false });
+  expect(normalizeAppearance({ wallpaper: "javascript:alert(1)", customImage: "https://untrusted.example/image.jpg", dim: NaN })).toEqual(DEFAULT_APPEARANCE);
+  expect(wallpaperImage(normalizeAppearance({ wallpaper: "forest" }))).toBe("/wallpapers/forest.jpg");
+  expect(wallpaperImage(normalizeAppearance({ wallpaper: "none" }))).toBe("");
+});
+
+test("custom wallpaper accepts bounded raster data, never active image markup", () => {
+  const image = "data:image/webp;base64,AAAA";
+  expect(wallpaperImage(normalizeAppearance({ wallpaper: "custom", customImage: image }))).toBe(image);
+  expect(normalizeAppearance({ wallpaper: "custom", customImage: "data:image/svg+xml,<svg onload='alert(1)'/>" }).wallpaper).toBe("summit");
+  expect(normalizeAppearance({ wallpaper: "custom", customImage: "data:image/png;base64," + "A".repeat(1_500_000) }).customImage).toBe("");
+});
 test("page script errors survive iframe wrappers and failed proxy property checks", () => {
   const wrapped = new Proxy(new Error("Bookmarklet test error"), { has: () => false });
   expect(pageScriptError(wrapped)).toBe("Bookmarklet test error");
@@ -134,6 +202,21 @@ test("an unavailable login API is never mistaken for a pristine workspace", asyn
     }
     fetchMock.mockResolvedValue(Response.json({ initialized: false, unlocked: false, adminEnrolled: false }));
     expect((await accessSession()).initialized).toBe(false);
+  } finally {
+    fetchMock.mockRestore();
+  }
+});
+
+test("sign-in status checks have a bounded request and retain authentication validation", async () => {
+  const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ initialized: true, unlocked: false, role: null, adminEnrolled: true }));
+  try {
+    const session = await accessSession();
+    expect(session.initialized).toBe(true);
+    expect(session.unlocked).toBe(false);
+    const options = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(options.signal).toBeInstanceOf(AbortSignal);
+    expect(options.cache).toBe("no-store");
+    expect(options.credentials).toBe("same-origin");
   } finally {
     fetchMock.mockRestore();
   }

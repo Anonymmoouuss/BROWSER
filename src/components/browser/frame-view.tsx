@@ -18,9 +18,13 @@
  * clicks navigate the iframe itself and are reported through onNav.
  */
 
-import { useEffect, useRef } from "react";
-import { proxyUrl, realUrlFromProxy, realUrlFromScramjet, scramjetFramePrefix, type PageMenuTarget } from "@/lib/browser/shared";
+import { useEffect, useRef, useState } from "react";
+import { ArrowUpRight, Globe, RefreshCw, ShieldAlert } from "lucide-react";
+import { toast } from "sonner";
+import { hostOf, proxyUrl, realUrlFromProxy, realUrlFromScramjet, scramjetFramePrefix, type PageMenuTarget } from "@/lib/browser/shared";
 import { buildFramePlugins, destroyScramjetFrame, getScramjetEngine, type SjFrame } from "@/lib/browser/scramjet";
+import { applyPageExtensions } from "@/lib/browser/extensions";
+import { proxyPageFailure, type ProxyPageFailure } from "@/lib/browser/page-failure";
 
 interface FrameViewProps {
   tabId: string;
@@ -51,7 +55,11 @@ interface FrameViewProps {
   onOpenTab?: (url: string, background: boolean) => void;
 }
 
-export default function FrameView({ tabId, navUrl, navSeq, title, zoom, legacy, searchRouted, onExplicitNavigate, register, onNav, onLoad, onDownload, onPageMenu, onOpenTab }: FrameViewProps) {
+export default function FrameView({ tabId, navUrl, navSeq, title, zoom, legacy: preferredLegacy, searchRouted, onExplicitNavigate, register, onNav, onLoad, onDownload, onPageMenu, onOpenTab }: FrameViewProps) {
+  const [compatibility, setCompatibility] = useState(false);
+  const [retrySeq, setRetrySeq] = useState(0);
+  const [failure, setFailure] = useState<(ProxyPageFailure & { url: string; source: string; sequence: number }) | null>(null);
+  const legacy = preferredLegacy || compatibility;
   const ref = useRef<HTMLIFrameElement | null>(null);
   const frameRef = useRef<SjFrame | null>(null);
   const onNavRef = useRef(onNav);
@@ -85,8 +93,10 @@ export default function FrameView({ tabId, navUrl, navSeq, title, zoom, legacy, 
   /* ---------- navigation (explicit) ---------- */
   useEffect(() => {
     let cancelled = false;
+    let navigationFrame: SjFrame | null = null;
     const el = ref.current;
     if (!el || !navUrl) return;
+    lastUrlRef.current = navUrl;
 
     if (legacy) {
       el.src = proxyUrl(navUrl);
@@ -101,24 +111,26 @@ export default function FrameView({ tabId, navUrl, navSeq, title, zoom, legacy, 
         el.src = proxyUrl(navUrl);
         return;
       }
-      let frame = frameRef.current;
-      if (!frame) {
-        frame = controller.createFrame(el, {
-          plugins: buildFramePlugins((url) => {
-            lastUrlRef.current = url;
-            onNavRef.current(url, "");
-          }),
-        });
-        frameRef.current = frame;
-      }
+      destroyScramjetFrame(frameRef.current);
+      const frame = controller.createFrame(el, {
+        plugins: buildFramePlugins((url) => {
+          if (cancelled) return;
+          lastUrlRef.current = url;
+          onNavRef.current(url, "");
+        }),
+      });
+      navigationFrame = frame;
+      frameRef.current = frame;
       lastUrlRef.current = navUrl;
       frame.go(navUrl);
     })();
 
     return () => {
       cancelled = true;
+      destroyScramjetFrame(navigationFrame);
+      if (frameRef.current === navigationFrame) frameRef.current = null;
     };
-  }, [navSeq, navUrl, legacy]);
+  }, [navSeq, navUrl, legacy, retrySeq]);
 
   /* ---------- title polling (SPAs change document.title dynamically) ---------- */
   useEffect(() => {
@@ -391,13 +403,29 @@ export default function FrameView({ tabId, navUrl, navSeq, title, zoom, legacy, 
     onLoad();
     const el = ref.current;
     if (!el) return;
+    try {
+      const document = el.contentDocument;
+      const result = document ? proxyPageFailure(document.body?.textContent ?? "", document.contentType) : null;
+      if (result) {
+        const url = realUrlFromScramjet(el.contentWindow?.location.href ?? "") ?? realUrlFromProxy(el.src) ?? (lastUrlRef.current || navUrl);
+        setFailure({ ...result, url, source: navUrl, sequence: navSeq });
+        return;
+      }
+    } catch {
+      return;
+    }
     attachInterceptor();
+    const extensionTarget = realUrlFromProxy(el.src) ?? (lastUrlRef.current || navUrl);
+    void applyPageExtensions(el, extensionTarget).then((errors) => {
+      for (const error of errors) toast.error(error);
+    }).catch(() => undefined);
     if (legacy) {
       try {
         const w = el.contentWindow;
         if (!w) return;
         const real = realUrlFromProxy(w.location.href);
         if (!real) return;
+        lastUrlRef.current = real;
         const docTitle = w.document?.title ?? "";
         onNavRef.current(real, docTitle);
       } catch {
@@ -422,8 +450,22 @@ export default function FrameView({ tabId, navUrl, navSeq, title, zoom, legacy, 
     ? { sandbox: "allow-same-origin allow-scripts allow-forms allow-downloads" }
     : {};
 
+  const visibleFailure = failure?.source === navUrl && failure.sequence === navSeq ? failure : null;
+  const retryPage = (useCompatibility: boolean) => {
+    const target = visibleFailure?.url ?? (lastUrlRef.current || navUrl);
+    setFailure(null);
+    setCompatibility(useCompatibility);
+    if (onExplicitNavigateRef.current) onExplicitNavigateRef.current(target);
+    else setRetrySeq((sequence) => sequence + 1);
+  };
+
   return (
-    <iframe
+    <div className="relative flex h-full min-h-0 flex-col">
+      {compatibility && !visibleFailure && <div className="flex min-h-8 shrink-0 items-center justify-between gap-3 border-b border-zinc-800 bg-zinc-900 px-3 text-xs text-zinc-400">
+        <span className="flex items-center gap-2"><ShieldAlert className="h-3.5 w-3.5 text-amber-300" aria-hidden="true" /> Compatibility mode</span>
+        <button type="button" onClick={() => retryPage(false)} className="inline-flex items-center gap-1.5 py-1 text-zinc-300 hover:text-white"><RefreshCw className="h-3 w-3" aria-hidden="true" /> Use browser engine</button>
+      </div>}
+      <iframe
       ref={ref}
       title={title || tabId}
       onLoad={handleLoad}
@@ -432,7 +474,22 @@ export default function FrameView({ tabId, navUrl, navSeq, title, zoom, legacy, 
       referrerPolicy="strict-origin-when-cross-origin"
       {...sandboxAttr}
       style={zoom !== 1 ? { zoom } : undefined}
-      className="h-full w-full border-0 bg-white"
-    />
+        className="min-h-0 w-full flex-1 border-0 bg-white"
+      />
+      {visibleFailure && <section role="alert" aria-label="Page connection problem" className="absolute inset-0 flex items-center justify-center overflow-y-auto bg-[var(--background)] px-6 py-10">
+        <div className="w-full max-w-lg">
+          <Globe className="mb-6 h-9 w-9 text-zinc-600" aria-hidden="true" />
+          <h2 className="text-xl font-semibold text-zinc-100">This site could not be reached</h2>
+          <p className="mt-2 break-all text-sm text-zinc-400">{hostOf(visibleFailure.url) ?? "Website"}</p>
+          <p className="mt-4 text-sm leading-relaxed text-zinc-500">{visibleFailure.message}</p>
+          {visibleFailure.code !== null && <p className="mt-3 font-mono text-xs text-zinc-600">Connection error {visibleFailure.code}</p>}
+          <div className="mt-6 flex flex-wrap gap-2">
+            <button type="button" onClick={() => retryPage(false)} className="inline-flex h-9 items-center gap-2 rounded-md bg-emerald-300 px-3 text-xs font-semibold text-zinc-950"><RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /> Retry page</button>
+            <button type="button" onClick={() => retryPage(true)} className="inline-flex h-9 items-center gap-2 rounded-md border border-zinc-700 px-3 text-xs text-zinc-300 hover:bg-zinc-800"><ShieldAlert className="h-3.5 w-3.5" aria-hidden="true" /> Compatibility mode</button>
+            <a href={visibleFailure.url} target="_blank" rel="noopener noreferrer" className="inline-flex h-9 items-center gap-2 rounded-md border border-zinc-700 px-3 text-xs text-zinc-300 hover:bg-zinc-800">Open original <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" /></a>
+          </div>
+        </div>
+      </section>}
+    </div>
   );
 }

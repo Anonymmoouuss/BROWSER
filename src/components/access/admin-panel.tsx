@@ -12,6 +12,7 @@ import {
   Ban,
   CreditCard,
   Lock,
+  Laptop,
   RefreshCw,
   ShieldOff,
   Trash2,
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 import { accessAuthHeaders, accessRequest, downloadText } from "./access-client";
 import { billingPeriodAt } from "@/lib/access/billing";
+import DeviceAccessPanel from "./device-access-panel";
 
 /** GET /api/admin with the header-token fallback (plain fetch would lose
  *  the session in the cookie-blocked preview iframe). */
@@ -71,7 +73,7 @@ export default function AdminPanel({
   onLock: () => void;
   recoveryCodes?: string[];
 }) {
-  const [tab, setTab] = useState<"enrollments" | "payments">("enrollments");
+  const [tab, setTab] = useState<"enrollments" | "payments" | "devices">("enrollments");
   const [status, setStatus] = useState("");
   const [enrollments, setEnrollments] = useState<Enrollment[] | null>(null);
   const [members, setMembers] = useState<Member[] | null>(null);
@@ -209,7 +211,7 @@ export default function AdminPanel({
           </section>
         )}
 
-        <nav className="mb-4 flex items-center gap-2" aria-label="Administration">
+        <nav className="mb-4 flex flex-wrap items-center gap-2" aria-label="Administration">
           <button
             type="button"
             onClick={() => setTab("enrollments")}
@@ -234,6 +236,7 @@ export default function AdminPanel({
           >
             <CreditCard className="h-4 w-4" aria-hidden="true" /> Payments
           </button>
+          <button type="button" onClick={() => setTab("devices")} aria-pressed={tab === "devices"} className={`${button} ${tab === "devices" ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-300" : "border-zinc-700 text-zinc-400 hover:text-zinc-200"} px-4 py-2 text-sm`}><Laptop className="h-4 w-4" aria-hidden="true" /> Devices</button>
           <span className="flex-1" />
           <button
             type="button"
@@ -248,7 +251,7 @@ export default function AdminPanel({
           {status}
         </p>
 
-        {tab === "enrollments" ? (
+        {tab === "devices" ? <DeviceAccessPanel /> : tab === "enrollments" ? (
           <div className="space-y-4">
             <button
               type="button"

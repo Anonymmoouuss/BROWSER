@@ -14,6 +14,7 @@ import {
   Database,
   Globe,
   History,
+  Image as ImageIcon,
   Loader2,
   RotateCcw,
   Settings,
@@ -27,6 +28,7 @@ import {
 import { toast } from "sonner";
 import type { EngineState } from "@/lib/browser/scramjet";
 import { clearSiteZooms, removeSiteZoom, useSiteZooms } from "@/lib/browser/site-zoom";
+import AppearanceControls from "./appearance-controls";
 
 interface ConfigPageProps {
   engine: EngineState;
@@ -159,6 +161,11 @@ export default function ConfigPage(props: ConfigPageProps) {
           Settings
         </h1>
         <p className="mt-1.5 text-xs text-zinc-600">about:config — engine diagnostics and local browsing data</p>
+
+        <section className="mt-8" aria-label="Appearance">
+          <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-zinc-300"><ImageIcon className="h-4 w-4 text-zinc-500" aria-hidden="true" /> Appearance</h2>
+          <div className="max-w-sm"><AppearanceControls /></div>
+        </section>
 
         <Section title="Proxy engine" icon={Cpu}>
           <div className="flex items-center justify-between gap-4 bg-zinc-900/50 px-4 py-3">

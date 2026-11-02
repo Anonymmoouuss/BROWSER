@@ -134,12 +134,11 @@ export default function TabStrip({ tabs, activeId, flashIds, onSelect, onClose, 
     : [];
 
   return (
-    <div role="tablist" aria-label="Browser tabs" className="cw-scroll flex h-10 shrink-0 items-end gap-1 overflow-x-auto border-b border-zinc-800 bg-zinc-900/60 px-2 pt-2">
-      <div className="mr-1 hidden h-8 shrink-0 items-center gap-1.5 pl-1 pr-2 sm:flex">
-        <span className="flex h-6 w-6 items-center justify-center rounded-md border border-emerald-400/30 bg-zinc-900">
-          <Globe className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
-        </span>
-        <span className="text-xs font-semibold tracking-wide text-zinc-400">Browser</span>
+    <div className="flex h-12 shrink-0 items-end border-b border-[var(--browser-border)] bg-[var(--browser-chrome)] px-2">
+      <div role="tablist" aria-label="Browser tabs" className="cw-scroll flex min-w-0 flex-1 items-end gap-1 overflow-x-auto pt-2">
+      <div className="mr-2 hidden h-10 shrink-0 items-center gap-2 pl-1 pr-3 sm:flex">
+        <img src="/logo.svg" alt="" width={26} height={26} className="h-6.5 w-6.5" />
+        <span className="text-xs font-medium text-zinc-400">Browser</span>
       </div>
 
       {tabs.map((tab) => {
@@ -181,10 +180,10 @@ export default function TabStrip({ tabs, activeId, flashIds, onSelect, onClose, 
             }}
             onContextMenu={(e) => openMenu(e, tab.id)}
             title={tab.url ?? "New tab"}
-            className={`group relative flex shrink-0 items-center gap-2 px-3 text-xs transition-[height,background-color,color] duration-150 ${
+            className={`group relative flex h-10 w-36 shrink-0 items-center gap-2 rounded-t-lg border px-3 text-xs transition-colors duration-150 sm:w-48 ${
               active
-                ? "h-9 min-w-[130px] max-w-[230px] rounded-t-lg bg-zinc-800 text-zinc-100 shadow-[inset_0_1px_0_0_rgba(52,211,153,0.55)]"
-                : "h-8 min-w-[130px] max-w-[230px] rounded-t-md bg-zinc-900/40 text-zinc-500 hover:bg-zinc-900/80 hover:text-zinc-300"
+                ? "border-[var(--browser-border)] border-b-transparent bg-[var(--browser-toolbar)] text-zinc-100 shadow-[inset_0_2px_0_0_var(--browser-accent)]"
+                : "border-transparent bg-transparent text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
             } ${dragging ? "opacity-40" : ""}`}
           >
             {showIndicator && (
@@ -223,10 +222,11 @@ export default function TabStrip({ tabs, activeId, flashIds, onSelect, onClose, 
         onClick={onNew}
         aria-label="New tab"
         title="New tab (Ctrl+T)"
-        className="mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+        className="mb-1 ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-white/8 hover:text-zinc-200"
       >
         <Plus className="h-4 w-4" aria-hidden="true" />
       </button>
+      </div>
 
       {/* Chrome-style tab-search pill at the end of the strip */}
       <button
@@ -234,7 +234,7 @@ export default function TabStrip({ tabs, activeId, flashIds, onSelect, onClose, 
         onClick={onSearchTabs}
         aria-label="Search tabs"
         title="Search tabs (Ctrl+Shift+A)"
-        className="mb-0.5 ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200 sm:ml-1"
+        className="mb-1 ml-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/5 bg-white/3 text-zinc-400 transition-colors hover:bg-white/8 hover:text-zinc-200"
       >
         <ChevronDown className="h-4 w-4" aria-hidden="true" />
       </button>

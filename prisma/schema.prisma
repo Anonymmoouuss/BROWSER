@@ -39,6 +39,7 @@ model AccessUser {
 
   payments AccessPayment[]
   tokens   AccessToken[]
+  passkeys AccessPasskey[]
 
   @@index([role, status])
 }
@@ -55,11 +56,46 @@ model AccessToken {
   purpose       String? // challenge purpose (login|enroll|setup|recover)
   preauthHash   String? // challenge -> owning preauth hash
   recoverVersion Int? // admin auth_version at recovery-challenge mint
+  passkeyId     String?
   expiresAt     DateTime
   createdAt     DateTime @default(now())
 
   @@index([expiresAt])
   @@index([userId, kind])
+}
+
+model AccessPasskey {
+  id          String   @id
+  userId      String
+  user        AccessUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rpId        String
+  publicKey   Bytes
+  counter     Int      @default(0)
+  transports  String   @default("[]")
+  deviceType  String
+  backedUp    Boolean  @default(false)
+  approved    Boolean  @default(false)
+  approvedAt  DateTime?
+  requestAddress String?
+  requestAgent String?
+  createdAt   DateTime @default(now())
+  lastUsedAt  DateTime?
+
+  @@index([userId, rpId])
+}
+
+model AccessPasskeyChallenge {
+  id          String   @id
+  stageHash   String
+  challenge   String
+  kind        String
+  origin      String
+  rpId        String
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([stageHash])
+  @@index([expiresAt])
 }
 
 /// Manually confirmed $5 calendar-month payments, anchored to the member's

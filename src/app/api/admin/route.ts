@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAccessService } from "@/lib/access/service";
 import { ACCESS_COOKIE } from "@/lib/access/crypto";
+import { passkeyContext } from "@/lib/access/passkeys";
 
 /**
  * Admin panel endpoint (requires an approved admin session — cookie or
@@ -63,6 +64,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  try { passkeyContext(req.headers.get("origin") ?? ""); }
+  catch { return NextResponse.json({ error: "Administrator changes require the trusted workspace origin." }, { status: 403, headers: { "cache-control": "no-store" } }); }
   try {
     const body = (await req.json().catch(() => null)) as
       | (Record<string, unknown> & { action?: string })
